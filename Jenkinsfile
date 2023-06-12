@@ -7,7 +7,7 @@ def registryCredentials="docker_hub"
 
 pipeline {
     agent {
-        lablel 'agent'
+        label 'agent'
     }
     tools {
         terraform 'Terraform'
