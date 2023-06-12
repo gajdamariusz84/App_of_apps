@@ -26,7 +26,7 @@ pipeline {
         }
         stage('adjust version') {
             steps {
-                script{
+                script {
                     backendDockerTag = params.backendDockerTag.isEmpty() ? "latest" : params.backendDockerTag
                     frontendDockerTag = params.frontendDockerTag.isEmpty() ? "latest" : params.frontendDockerTag
                     
@@ -36,7 +36,7 @@ pipeline {
         }
         stage('deploy app') {
             steps {
-                script{
+                script {
                     withEnv(["FRONTEND_IMAGE=$frontendImage:$frontendDockerTag", "BACKEND_IMAGE=$backendImage:$backendDockerTag"]) {
                         docker.withRegistry("$dockerRegistry", "$registryCredentials") {
                             sh "docker-compose up -d"
@@ -44,6 +44,39 @@ pipeline {
                     }
                 }
             }
+        }
+        stage('selenium tests') {
+            steps {
+                sh "pip3 install -r test/selenium/requirements.txt"
+                sh "python3 -m pytest test/selenium/FrontendTest.py"
+            }
+        }
+        stage('run terraform') {
+            steps {
+                dir('Terraform') {
+                    git branch: 'master', url: 'https://github.com/gajdamariusz84/Terraform'
+                    withAWS(credentials: 'AWS', region: 'us-east-1') {
+                        sh 'terraform init && terraform apply -auto-approve -var-file="terraform.tfvars"'
+                    }
+                }
+            }
+        }
+        stage('run ansible') {
+            steps {
+                script {
+                    sh "ansible-galaxy install -r requirements.yml"
+                    withEnv(["FRONTEND_IMAGE=$frontendImage:$frontendDockerTag", "BACKEND_IMAGE=$backendImage:$backendDockerTag"]) {
+                        ansiblePlaybook inventory: 'inventory', playbook: 'playbook.yml'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh "docker-compose down"
+            cleanWs()
         }
     }
 }
